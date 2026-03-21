@@ -1,0 +1,16 @@
+rules:
+  - id: no-subprocess-shell
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+    message: shell=True is not allowed in application code.
+    severity: ERROR
+    languages: [python]
+
+  - id: no-dynamic-exec
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+    message: Dynamic code execution is not allowed in application code.
+    severity: ERROR
+    languages: [python]

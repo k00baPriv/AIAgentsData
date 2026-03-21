@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+from datamart.db import get_connection, initialize_database, reset_database
+from datamart.qa import answer_question
+from datamart.simulator import DatamartSimulator, SimulationConfig
+from datamart.warehouse import build_star_schema
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+
+class DatamartSmokeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.connection = get_connection()
+        reset_database(self.connection)
+        initialize_database(self.connection)
+
+    def tearDown(self) -> None:
+        self.connection.close()
+
+    def _build_demo(self, days: int = 10, seed: int = 7) -> None:
+        config = SimulationConfig(days=days, seed=seed)
+        DatamartSimulator(self.connection, config).run()
+        build_star_schema(self.connection, config.start_date, config.days)
+
+    def test_simulation_builds_multi_fact_warehouse(self) -> None:
+        self._build_demo(days=10)
+
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM customers").fetchone()["count"],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM products").fetchone()["count"],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM fact_order_items").fetchone()[
+                "count"
+            ],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM fact_payments").fetchone()[
+                "count"
+            ],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute(
+                "SELECT COUNT(*) AS count FROM fact_support_tickets"
+            ).fetchone()["count"],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM fact_daily_kpis").fetchone()[
+                "count"
+            ],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM fact_weekly_kpis").fetchone()[
+                "count"
+            ],
+            0,
+        )
+        self.assertGreater(
+            self.connection.execute("SELECT COUNT(*) AS count FROM fact_monthly_kpis").fetchone()[
+                "count"
+            ],
+            0,
+        )
+
+    def test_daily_weekly_monthly_net_revenue_aligns(self) -> None:
+        self._build_demo(days=14)
+
+        daily_value = self.connection.execute(
+            """
+            SELECT ROUND(SUM(f.kpi_value), 2) AS value
+            FROM fact_daily_kpis f
+            JOIN dim_kpi k ON k.kpi_key = f.kpi_key
+            JOIN dim_country co ON co.country_key = f.country_key
+            JOIN dim_segment s ON s.segment_key = f.segment_key
+            JOIN dim_category c ON c.category_key = f.category_key
+            JOIN dim_channel ch ON ch.channel_key = f.channel_key
+            JOIN dim_payment_method pm ON pm.payment_method_key = f.payment_method_key
+            JOIN dim_ticket_type tt ON tt.ticket_type_key = f.ticket_type_key
+            WHERE k.kpi_name = 'net_revenue'
+              AND co.country_code = 'all'
+              AND s.segment_name = 'all'
+              AND c.category_name = 'all'
+              AND ch.channel_name = 'all'
+              AND pm.payment_method_name = 'all'
+              AND tt.ticket_type_name = 'all'
+            """
+        ).fetchone()["value"]
+
+        weekly_value = self.connection.execute(
+            """
+            SELECT ROUND(SUM(f.kpi_value), 2) AS value
+            FROM fact_weekly_kpis f
+            JOIN dim_kpi k ON k.kpi_key = f.kpi_key
+            JOIN dim_country co ON co.country_key = f.country_key
+            JOIN dim_segment s ON s.segment_key = f.segment_key
+            JOIN dim_category c ON c.category_key = f.category_key
+            JOIN dim_channel ch ON ch.channel_key = f.channel_key
+            JOIN dim_payment_method pm ON pm.payment_method_key = f.payment_method_key
+            JOIN dim_ticket_type tt ON tt.ticket_type_key = f.ticket_type_key
+            WHERE k.kpi_name = 'net_revenue'
+              AND co.country_code = 'all'
+              AND s.segment_name = 'all'
+              AND c.category_name = 'all'
+              AND ch.channel_name = 'all'
+              AND pm.payment_method_name = 'all'
+              AND tt.ticket_type_name = 'all'
+            """
+        ).fetchone()["value"]
+
+        monthly_value = self.connection.execute(
+            """
+            SELECT ROUND(SUM(f.kpi_value), 2) AS value
+            FROM fact_monthly_kpis f
+            JOIN dim_kpi k ON k.kpi_key = f.kpi_key
+            JOIN dim_country co ON co.country_key = f.country_key
+            JOIN dim_segment s ON s.segment_key = f.segment_key
+            JOIN dim_category c ON c.category_key = f.category_key
+            JOIN dim_channel ch ON ch.channel_key = f.channel_key
+            JOIN dim_payment_method pm ON pm.payment_method_key = f.payment_method_key
+            JOIN dim_ticket_type tt ON tt.ticket_type_key = f.ticket_type_key
+            WHERE k.kpi_name = 'net_revenue'
+              AND co.country_code = 'all'
+              AND s.segment_name = 'all'
+              AND c.category_name = 'all'
+              AND ch.channel_name = 'all'
+              AND pm.payment_method_name = 'all'
+              AND tt.ticket_type_name = 'all'
+            """
+        ).fetchone()["value"]
+
+        self.assertEqual(daily_value, weekly_value)
+        self.assertEqual(daily_value, monthly_value)
+
+    def test_question_answers_return_expected_shapes(self) -> None:
+        self._build_demo(days=14)
+
+        payments_answer = answer_question(self.connection, "Show payments by method yesterday")
+        tickets_answer = answer_question(self.connection, "Show tickets by type yesterday")
+        trend_answer = answer_question(
+            self.connection, "Show daily new customers for the last 14 days"
+        )
+
+        self.assertIn("payment_method_name=", payments_answer)
+        self.assertIn("ticket_type_name=", tickets_answer)
+        self.assertIn("kpi_date=", trend_answer)
+        self.assertIn("value=", trend_answer)
+
+    def test_unknown_question_returns_guidance(self) -> None:
+        self._build_demo(days=10)
+
+        answer = answer_question(
+            self.connection, "Explain customer happiness trend by superhero tier"
+        )
+
+        self.assertIn("Question not recognized.", answer)
+        self.assertIn("What was net revenue in the last 7 days?", answer)
+
+
+class SemanticArtifactTest(unittest.TestCase):
+    def test_semantic_files_exist_and_contain_expected_sections(self) -> None:
+        semantic_model = (ROOT_DIR / "semantic_model.yaml").read_text()
+        semantic_guide = (ROOT_DIR / "AGENT_SQL_SEMANTIC_GUIDE.md").read_text()
+
+        self.assertIn("metrics:", semantic_model)
+        self.assertIn("dimensions:", semantic_model)
+        self.assertIn("net_revenue:", semantic_model)
+        self.assertIn("payment_method:", semantic_model)
+
+        self.assertIn("Semantic workflow", semantic_guide)
+        self.assertIn("Metric-to-source guidance", semantic_guide)
+        self.assertIn("SQL prompt template", semantic_guide)
+
+
+if __name__ == "__main__":
+    unittest.main()

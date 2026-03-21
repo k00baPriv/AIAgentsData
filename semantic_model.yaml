@@ -1,0 +1,426 @@
+version: 1
+project: multi_object_datamart
+description: >
+  Semantic model for the SQLite multi-object analytics warehouse.
+  This model abstracts the physical star schema into business metrics,
+  dimensions, grains, and allowed query patterns for AI agents.
+
+business_entities:
+  - customers
+  - products
+  - orders
+  - payments
+  - support_tickets
+
+grains:
+  - name: day
+    description: One business day.
+    preferred_kpi_fact: fact_daily_kpis
+  - name: week
+    description: One business week.
+    preferred_kpi_fact: fact_weekly_kpis
+  - name: month
+    description: One business month.
+    preferred_kpi_fact: fact_monthly_kpis
+
+dimensions:
+  date:
+    label: Date
+    table: dim_date
+    key: date_key
+    fields:
+      - full_date
+      - year
+      - month
+      - day
+    synonyms:
+      - date
+      - day
+      - time
+
+  country:
+    label: Country
+    table: dim_country
+    key: country_key
+    label_field: country_code
+    synonyms:
+      - country
+      - market
+      - region
+
+  segment:
+    label: Customer Segment
+    table: dim_segment
+    key: segment_key
+    label_field: segment_name
+    synonyms:
+      - segment
+      - customer segment
+      - customer type
+
+  category:
+    label: Product Category
+    table: dim_category
+    key: category_key
+    label_field: category_name
+    synonyms:
+      - category
+      - product category
+      - product group
+
+  brand:
+    label: Brand
+    table: dim_brand
+    key: brand_key
+    label_field: brand_name
+    synonyms:
+      - brand
+
+  channel:
+    label: Sales Channel
+    table: dim_channel
+    key: channel_key
+    label_field: channel_name
+    synonyms:
+      - channel
+      - sales channel
+      - source channel
+
+  shipment_mode:
+    label: Shipment Mode
+    table: dim_shipment_mode
+    key: shipment_mode_key
+    label_field: shipment_mode_name
+    synonyms:
+      - shipment mode
+      - shipping mode
+      - delivery mode
+
+  payment_method:
+    label: Payment Method
+    table: dim_payment_method
+    key: payment_method_key
+    label_field: payment_method_name
+    synonyms:
+      - payment method
+      - payment type
+
+  ticket_type:
+    label: Ticket Type
+    table: dim_ticket_type
+    key: ticket_type_key
+    label_field: ticket_type_name
+    synonyms:
+      - ticket type
+      - support issue type
+
+  priority:
+    label: Ticket Priority
+    table: dim_priority
+    key: priority_key
+    label_field: priority_name
+    synonyms:
+      - priority
+      - ticket priority
+
+metrics:
+  net_revenue:
+    label: Net Revenue
+    description: Sum of net revenue from completed order items.
+    default_source_fact: fact_order_items
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: SUM(net_revenue)
+    base_filters:
+      - order_status = 'completed'
+    synonyms:
+      - revenue
+      - sales
+      - net sales
+    allowed_dimensions:
+      - country
+      - segment
+      - category
+      - brand
+      - channel
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  gross_revenue:
+    label: Gross Revenue
+    description: Sum of gross revenue before discounts from completed order items.
+    default_source_fact: fact_order_items
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: SUM(gross_revenue)
+    base_filters:
+      - order_status = 'completed'
+    synonyms:
+      - gross sales
+    allowed_dimensions:
+      - country
+      - segment
+      - category
+      - brand
+      - channel
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  items_sold:
+    label: Items Sold
+    description: Sum of quantities sold for completed order items.
+    default_source_fact: fact_order_items
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: SUM(quantity)
+    base_filters:
+      - order_status = 'completed'
+    synonyms:
+      - units sold
+      - quantity sold
+    allowed_dimensions:
+      - country
+      - segment
+      - category
+      - brand
+      - channel
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  completed_orders:
+    label: Completed Orders
+    description: Count of distinct completed orders.
+    default_source_fact: fact_order_items
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: COUNT(DISTINCT order_id)
+    base_filters:
+      - order_status = 'completed'
+    synonyms:
+      - orders
+      - successful orders
+    allowed_dimensions:
+      - country
+      - segment
+      - category
+      - brand
+      - channel
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  avg_order_value:
+    label: Average Order Value
+    description: Average completed order total in the selected period.
+    default_source_fact: fact_order_items
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: AVG(order_total)
+    semantic_warning: Do not sum daily average order values across days.
+    synonyms:
+      - aov
+      - average basket
+    allowed_dimensions: []
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  payments_collected:
+    label: Payments Collected
+    description: Sum of paid payment amounts.
+    default_source_fact: fact_payments
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: SUM(payment_amount)
+    base_filters:
+      - payment_status = 'paid'
+    synonyms:
+      - collections
+      - collected cash
+    allowed_dimensions:
+      - payment_method
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  refund_amount:
+    label: Refund Amount
+    description: Sum of refunded payment amounts.
+    default_source_fact: fact_payments
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: SUM(payment_amount)
+    base_filters:
+      - payment_status = 'refunded'
+    synonyms:
+      - refunds
+      - refunded amount
+    allowed_dimensions:
+      - payment_method
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  ticket_count:
+    label: Ticket Count
+    description: Count of support tickets.
+    default_source_fact: fact_support_tickets
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: COUNT(*)
+    synonyms:
+      - support tickets
+      - tickets
+    allowed_dimensions:
+      - country
+      - segment
+      - ticket_type
+      - priority
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  open_ticket_count:
+    label: Open Ticket Count
+    description: Count of support tickets with open status.
+    default_source_fact: fact_support_tickets
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: COUNT(*)
+    base_filters:
+      - ticket_status = 'open'
+    synonyms:
+      - open tickets
+    allowed_dimensions:
+      - country
+      - segment
+      - ticket_type
+      - priority
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  new_customers:
+    label: New Customers
+    description: Count of newly created customers.
+    default_source_fact: dim_customer
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: COUNT(*)
+    synonyms:
+      - acquisitions
+      - customer acquisitions
+    allowed_dimensions: []
+    allowed_grains:
+      - day
+      - week
+      - month
+
+  new_products:
+    label: New Products
+    description: Count of newly launched products.
+    default_source_fact: dim_product
+    preferred_grain_facts:
+      day: fact_daily_kpis
+      week: fact_weekly_kpis
+      month: fact_monthly_kpis
+    sql_measure: COUNT(*)
+    synonyms:
+      - product launches
+      - launched products
+    allowed_dimensions:
+      - category
+      - brand
+    allowed_grains:
+      - day
+      - week
+      - month
+
+kpi_fact_mappings:
+  fact_daily_kpis:
+    scalar_metrics:
+      - new_customers
+      - new_products
+      - gross_revenue
+      - net_revenue
+      - items_sold
+      - completed_orders
+      - avg_order_value
+      - payments_collected
+      - refund_amount
+      - ticket_count
+      - open_ticket_count
+    dimensional_metrics:
+      revenue_by_segment:
+        dimension: segment
+      revenue_by_country:
+        dimension: country
+      revenue_by_category:
+        dimension: category
+      revenue_by_channel:
+        dimension: channel
+      payments_by_method:
+        dimension: payment_method
+      tickets_by_type:
+        dimension: ticket_type
+
+  fact_weekly_kpis:
+    same_as: fact_daily_kpis
+
+  fact_monthly_kpis:
+    same_as: fact_daily_kpis
+
+query_policies:
+  prefer_preaggregated_kpi_facts: true
+  prefer_transaction_facts_for:
+    - brand-level revenue analysis
+    - shipment mode analysis
+    - raw order-item exploration
+    - customer-level order inspection
+  forbidden_patterns:
+    - Summing avg_order_value across periods
+    - Mixing multiple fact tables unless necessary
+    - Using operational tables for standard analytics
+    - Inventing joins not present in the warehouse
+
+comparison_patterns:
+  supported:
+    - day_vs_previous_day
+    - week_vs_previous_week
+    - month_vs_previous_month
+    - trailing_7_days
+    - trailing_30_days
+  not_supported_cleanly_yet:
+    - year_over_year

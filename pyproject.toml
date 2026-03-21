@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sqlite-multi-object-datamart"
+version = "0.1.0"
+description = "Study-friendly SQLite datamart with operational simulation, star schema, KPI facts, and semantic model artifacts."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "bandit>=1.7",
+  "coverage>=7.0",
+  "mypy>=1.8",
+  "pip-audit>=2.7",
+  "pytest>=8.0",
+  "radon>=6.0",
+  "ruff>=0.5",
+  "semgrep>=1.70",
+  "vulture>=2.11",
+  "xenon>=0.9",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+omit = ["src/datamart/__init__.py"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/datamart", "tests"]
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

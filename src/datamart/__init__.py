@@ -1,0 +1,1 @@
+"""SQLite datamart demo package."""
