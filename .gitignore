@@ -1,3 +1,7 @@
 data/
 __pycache__/
 *.pyc
+/reports/
+/src/sqlite_multi_object_datamart.egg-info/
+/.coverage
+/.venv/
