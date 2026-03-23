@@ -22,6 +22,7 @@ It then loads a star schema with multiple dimensions and multiple fact tables.
 ## Quick start
 
 ```bash
+./.venv/bin/pip install -e .
 ./.venv/bin/python -m src.datamart.main simulate --days 90 --reset
 ./.venv/bin/python -m src.datamart.main summary
 ./.venv/bin/python -m src.datamart.main star
@@ -33,6 +34,24 @@ Example questions:
 ./.venv/bin/python -m src.datamart.main ask "What was net revenue in the last 7 days?"
 ./.venv/bin/python -m src.datamart.main ask "Show payments by method yesterday"
 ./.venv/bin/python -m src.datamart.main ask "Show tickets by type yesterday"
+```
+
+The `ask` command now resolves supported questions through an Ibis semantic layer backed by
+[`semantic_model.yaml`](/Users/kuba/PycharmProjects/PythonProject/AIAgentsData/semantic_model.yaml)
+instead of hand-written SQL tied directly to the warehouse tables.
+
+You can also query the semantic layer directly from Python:
+
+```python
+from datamart import SemanticQuery, run_semantic_query
+from datamart.db import get_connection
+
+connection = get_connection()
+rows = run_semantic_query(
+    connection,
+    SemanticQuery(metric="payments_collected", dimensions=("payment_method",), day_offset=1),
+)
+print(rows)
 ```
 
 ## Warehouse design

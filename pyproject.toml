@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Study-friendly SQLite datamart with operational simulation, star schema, KPI facts, and semantic model artifacts."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "ibis-framework[sqlite]>=9.0",
+  "PyYAML>=6.0",
+]
 
 [project.optional-dependencies]
 dev = [

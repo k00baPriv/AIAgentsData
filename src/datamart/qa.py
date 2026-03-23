@@ -3,10 +3,28 @@ from __future__ import annotations
 import re
 import sqlite3
 
+from .semantic import (
+    SemanticQuery,
+    SemanticQueryDependencyError,
+    SemanticQueryError,
+    run_semantic_query,
+)
+
 
 def answer_question(connection: sqlite3.Connection, question: str) -> str:
     normalized = " ".join(question.lower().split())
 
+    try:
+        semantic_query = _semantic_query_for_question(normalized)
+        if semantic_query is not None:
+            return _format_semantic_rows(run_semantic_query(connection, semantic_query))
+    except (SemanticQueryDependencyError, SemanticQueryError):
+        return _answer_question_sql_fallback(connection, normalized)
+
+    return _answer_question_sql_fallback(connection, normalized)
+
+
+def _answer_question_sql_fallback(connection: sqlite3.Connection, normalized: str) -> str:
     if "net revenue" in normalized and "last 7 days" in normalized:
         return _format_rows(
             connection.execute(
@@ -140,6 +158,40 @@ def answer_question(connection: sqlite3.Connection, question: str) -> str:
         "- Show payments by method yesterday\n"
         "- Show tickets by type yesterday"
     )
+
+
+def _semantic_query_for_question(normalized: str) -> SemanticQuery | None:
+    if "net revenue" in normalized and "last 7 days" in normalized:
+        return SemanticQuery(metric="net_revenue", trailing_days=7, aggregate_over_time=True)
+
+    if "payments by method" in normalized and "yesterday" in normalized:
+        return SemanticQuery(
+            metric="payments_collected",
+            dimensions=("payment_method",),
+            day_offset=1,
+            aggregate_over_time=True,
+        )
+
+    if "tickets by type" in normalized and "yesterday" in normalized:
+        return SemanticQuery(
+            metric="ticket_count",
+            dimensions=("ticket_type",),
+            day_offset=1,
+            aggregate_over_time=True,
+        )
+
+    trend_match = re.search(r"daily (\w+(?: \w+)*) for the last (\d+) days", normalized)
+    if trend_match:
+        metric_name = _map_metric(trend_match.group(1))
+        if metric_name:
+            return SemanticQuery(metric=metric_name, trailing_days=int(trend_match.group(2)))
+    return None
+
+
+def _format_semantic_rows(rows: list[dict[str, object]]) -> str:
+    if not rows:
+        return "No data found."
+    return "\n".join(", ".join(f"{key}={row[key]}" for key in row) for row in rows)
 
 
 def _map_metric(metric_phrase: str) -> str | None:

@@ -1,24 +1,32 @@
 from __future__ import annotations
 
+import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
-from datamart.db import get_connection, initialize_database, reset_database
+from datamart.db import get_connection, initialize_database
 from datamart.qa import answer_question
+from datamart.semantic import SemanticQuery, run_semantic_query
 from datamart.simulator import DatamartSimulator, SimulationConfig
 from datamart.warehouse import build_star_schema
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+HAS_SEMANTIC_DEPS = (
+    importlib.util.find_spec("ibis") is not None and importlib.util.find_spec("yaml") is not None
+)
 
 
 class DatamartSmokeTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.connection = get_connection()
-        reset_database(self.connection)
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "datamart-test.db"
+        self.connection = get_connection(self.db_path)
         initialize_database(self.connection)
 
     def tearDown(self) -> None:
         self.connection.close()
+        self.temp_dir.cleanup()
 
     def _build_demo(self, days: int = 10, seed: int = 7) -> None:
         config = SimulationConfig(days=days, seed=seed)
@@ -166,11 +174,30 @@ class DatamartSmokeTest(unittest.TestCase):
         self.assertIn("Question not recognized.", answer)
         self.assertIn("What was net revenue in the last 7 days?", answer)
 
+    @unittest.skipUnless(HAS_SEMANTIC_DEPS, "Ibis and PyYAML are required for semantic tests.")
+    def test_semantic_query_returns_business_friendly_result(self) -> None:
+        self._build_demo(days=14)
+
+        rows = run_semantic_query(
+            self.connection,
+            SemanticQuery(
+                metric="payments_collected",
+                dimensions=("payment_method",),
+                day_offset=1,
+                aggregate_over_time=True,
+            ),
+        )
+
+        self.assertGreater(len(rows), 0)
+        self.assertIn("payment_method_name", rows[0])
+        self.assertIn("value", rows[0])
+
 
 class SemanticArtifactTest(unittest.TestCase):
     def test_semantic_files_exist_and_contain_expected_sections(self) -> None:
         semantic_model = (ROOT_DIR / "semantic_model.yaml").read_text()
         semantic_guide = (ROOT_DIR / "AGENT_SQL_SEMANTIC_GUIDE.md").read_text()
+        pyproject = (ROOT_DIR / "pyproject.toml").read_text()
 
         self.assertIn("metrics:", semantic_model)
         self.assertIn("dimensions:", semantic_model)
@@ -180,6 +207,8 @@ class SemanticArtifactTest(unittest.TestCase):
         self.assertIn("Semantic workflow", semantic_guide)
         self.assertIn("Metric-to-source guidance", semantic_guide)
         self.assertIn("SQL prompt template", semantic_guide)
+        self.assertIn("ibis-framework[sqlite]", pyproject)
+        self.assertIn("PyYAML", pyproject)
 
 
 if __name__ == "__main__":
