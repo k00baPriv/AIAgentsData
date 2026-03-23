@@ -4,6 +4,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from datamart.db import get_connection, initialize_database
 from datamart.qa import answer_question
@@ -158,11 +159,17 @@ class DatamartSmokeTest(unittest.TestCase):
         trend_answer = answer_question(
             self.connection, "Show daily new customers for the last 14 days"
         )
+        best_selling_answer = answer_question(self.connection, "Show best selling products top 5")
+        comparison_answer = answer_question(self.connection, "Show week vs week revenue")
 
         self.assertIn("payment_method_name=", payments_answer)
         self.assertIn("ticket_type_name=", tickets_answer)
         self.assertIn("kpi_date=", trend_answer)
         self.assertIn("value=", trend_answer)
+        self.assertIn("product_name=", best_selling_answer)
+        self.assertIn("items_sold=", best_selling_answer)
+        self.assertIn("current_value=", comparison_answer)
+        self.assertIn("previous_value=", comparison_answer)
 
     def test_unknown_question_returns_guidance(self) -> None:
         self._build_demo(days=10)
@@ -192,6 +199,50 @@ class DatamartSmokeTest(unittest.TestCase):
         self.assertIn("payment_method_name", rows[0])
         self.assertIn("value", rows[0])
 
+    @unittest.skipUnless(HAS_SEMANTIC_DEPS, "Ibis and PyYAML are required for semantic tests.")
+    def test_semantic_query_supports_ranked_product_results(self) -> None:
+        self._build_demo(days=14)
+
+        rows = run_semantic_query(
+            self.connection,
+            SemanticQuery(
+                metric="items_sold",
+                dimensions=("product",),
+                trailing_days=14,
+                aggregate_over_time=True,
+                order_by_metric="items_sold",
+                order_direction="desc",
+                limit=5,
+            ),
+        )
+
+        self.assertEqual(len(rows), 5)
+        self.assertIn("product_name", rows[0])
+        self.assertIn("value", rows[0])
+        first_value = cast(float, rows[0]["value"])
+        last_value = cast(float, rows[-1]["value"])
+        self.assertGreaterEqual(first_value, last_value)
+
+    @unittest.skipUnless(HAS_SEMANTIC_DEPS, "Ibis and PyYAML are required for semantic tests.")
+    def test_semantic_query_supports_previous_period_comparison(self) -> None:
+        self._build_demo(days=21)
+
+        rows = run_semantic_query(
+            self.connection,
+            SemanticQuery(
+                metric="net_revenue",
+                grain="week",
+                compare_to="previous_period",
+            ),
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertIn("current_period_start", rows[0])
+        self.assertIn("previous_period_start", rows[0])
+        self.assertIn("current_value", rows[0])
+        self.assertIn("previous_value", rows[0])
+        self.assertIn("delta_value", rows[0])
+
 
 class SemanticArtifactTest(unittest.TestCase):
     def test_semantic_files_exist_and_contain_expected_sections(self) -> None:
@@ -203,12 +254,15 @@ class SemanticArtifactTest(unittest.TestCase):
         self.assertIn("dimensions:", semantic_model)
         self.assertIn("net_revenue:", semantic_model)
         self.assertIn("payment_method:", semantic_model)
+        self.assertIn("product:", semantic_model)
 
         self.assertIn("Semantic workflow", semantic_guide)
         self.assertIn("Metric-to-source guidance", semantic_guide)
         self.assertIn("SQL prompt template", semantic_guide)
         self.assertIn("ibis-framework[sqlite]", pyproject)
         self.assertIn("PyYAML", pyproject)
+        self.assertIn("order_by_metric", (ROOT_DIR / "AGENT_SEMANTIC_QUERY_SPEC.md").read_text())
+        self.assertIn("compare_to", (ROOT_DIR / "AGENT_SEMANTIC_QUERY_SPEC.md").read_text())
 
 
 if __name__ == "__main__":

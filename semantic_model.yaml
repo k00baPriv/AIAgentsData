@@ -76,6 +76,16 @@ dimensions:
     synonyms:
       - brand
 
+  product:
+    label: Product
+    table: dim_product
+    key: product_key
+    label_field: product_name
+    synonyms:
+      - product
+      - item
+      - sku
+
   channel:
     label: Sales Channel
     table: dim_channel
@@ -144,6 +154,7 @@ metrics:
       - segment
       - category
       - brand
+      - product
       - channel
     allowed_grains:
       - day
@@ -168,6 +179,7 @@ metrics:
       - segment
       - category
       - brand
+      - product
       - channel
     allowed_grains:
       - day
@@ -193,6 +205,7 @@ metrics:
       - segment
       - category
       - brand
+      - product
       - channel
     allowed_grains:
       - day
@@ -218,6 +231,7 @@ metrics:
       - segment
       - category
       - brand
+      - product
       - channel
     allowed_grains:
       - day

@@ -28,6 +28,10 @@ SemanticQuery(
     trailing_days=14,
     day_offset=None,
     aggregate_over_time=False,
+    compare_to=None,
+    order_by_metric=None,
+    order_direction="desc",
+    limit=None,
 )
 ```
 
@@ -49,6 +53,10 @@ dimensions: []
 trailing_days: 14
 day_offset: null
 aggregate_over_time: false
+compare_to: null
+order_by_metric: null
+order_direction: desc
+limit: null
 ```
 
 ## SemanticQuery Contract
@@ -61,6 +69,10 @@ The agent must assume the query object has exactly these supported fields:
 - `trailing_days: int | None = None`
 - `day_offset: int | None = None`
 - `aggregate_over_time: bool = False`
+- `compare_to: str | None = None`
+- `order_by_metric: str | None = None`
+- `order_direction: str = "desc"`
+- `limit: int | None = None`
 
 Field meaning:
 
@@ -73,6 +85,11 @@ Field meaning:
 - `aggregate_over_time`:
   - `False`: keep the time grain in the output when applicable.
   - `True`: collapse the selected time window into one aggregate result per dimension set.
+- `compare_to`: period comparison mode. Currently only `previous_period` is supported.
+- `order_by_metric`: metric used for sorting grouped results. For the current API, this must
+  match `metric` when present.
+- `order_direction`: `asc` or `desc`.
+- `limit`: maximum number of rows to return after sorting.
 
 The agent must not invent extra fields such as:
 
@@ -82,7 +99,13 @@ The agent must not invent extra fields such as:
 - `end_date`
 - `filters`
 - `order_by`
-- `limit`
+
+Comparison constraints:
+
+- `compare_to` may only be `previous_period`.
+- comparisons do not currently support grouped dimensions
+- comparisons do not currently support ranking or limits
+- comparisons do not currently combine with `trailing_days` or `day_offset`
 
 ## Supported Metrics
 
@@ -102,10 +125,10 @@ Use these metric ids exactly:
 
 ## Allowed Dimensions By Metric
 
-- `net_revenue`: `country`, `segment`, `category`, `brand`, `channel`
-- `gross_revenue`: `country`, `segment`, `category`, `brand`, `channel`
-- `items_sold`: `country`, `segment`, `category`, `brand`, `channel`
-- `completed_orders`: `country`, `segment`, `category`, `brand`, `channel`
+- `net_revenue`: `country`, `segment`, `category`, `brand`, `product`, `channel`
+- `gross_revenue`: `country`, `segment`, `category`, `brand`, `product`, `channel`
+- `items_sold`: `country`, `segment`, `category`, `brand`, `product`, `channel`
+- `completed_orders`: `country`, `segment`, `category`, `brand`, `product`, `channel`
 - `avg_order_value`: none
 - `payments_collected`: `payment_method`
 - `refund_amount`: `payment_method`
@@ -193,6 +216,20 @@ SemanticQuery(
 )
 ```
 
+Best selling products:
+
+```python
+SemanticQuery(
+    metric="items_sold",
+    dimensions=("product",),
+    trailing_days=30,
+    aggregate_over_time=True,
+    order_by_metric="items_sold",
+    order_direction="desc",
+    limit=10,
+)
+```
+
 Daily new customers last 14 days:
 
 ```python
@@ -210,6 +247,16 @@ SemanticQuery(
     metric="new_customers",
     grain="week",
     trailing_days=21,
+)
+```
+
+Week vs week revenue:
+
+```python
+SemanticQuery(
+    metric="net_revenue",
+    grain="week",
+    compare_to="previous_period",
 )
 ```
 
